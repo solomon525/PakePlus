@@ -1,22 +1,661 @@
 <!DOCTYPE html>
-<html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <link rel="stylesheet" href="styles.css" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>PakePlus App</title>
-        <script type="module" src="/main.js" defer></script>
-    </head>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工艺表时间统计工具</title>
+    <script src="mammoth.browser.min.js"></script>
+    <script src="xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --secondary: #3498db;
+            --light: #f8f9fa;
+            --success: #2ecc71;
+            --warning: #f39c12;
+            --danger: #e74c3c;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e7eb 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1600px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, #1a2530 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+        
+        .main-content {
+            display: flex;
+            padding: 0;
+        }
+        
+        .control-panel {
+            width: 30%;
+            background: var(--light);
+            padding: 15px;
+            border-right: 1px solid #eaeaea;
+        }
+        
+        .results-panel {
+            width: 70%;
+            padding: 20px;
+            height: 100%;
+            overflow-y: auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        
+        .card h3 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--secondary);
+        }
+        
+        .btn {
+            display: block;
+            width: 100%;
+            background: linear-gradient(135deg, var(--secondary) 0%, var(--primary) 100%);
+            color: white;
+            border: none;
+            padding: 16px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            font-weight: 600;
+            margin: 20px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 7px 15px rgba(52, 152, 219, 0.4);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn i {
+            margin-right: 10px;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .status-indicator {
+            margin: 20px 0;
+            font-size: 0.95rem;
+            color: var(--primary);
+            min-height: 24px;
+            padding: 12px;
+            background: #e3f2fd;
+            border-radius: 8px;
+            border-left: 4px solid var(--secondary);
+        }
+        
+        .progress-container {
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            height: 10px;
+            background: #e0eaf5;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 5px;
+        }
+        
+        .progress {
+            height: 100%;
+            background: linear-gradient(to right, var(--secondary), var(--primary));
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+        
+        .progress-text {
+            font-size: 0.85rem;
+            text-align: right;
+            color: #7f8c8d;
+        }
+        
+        .work-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .work-type {
+            background: #e3f2fd;
+            padding: 8px;
+            border-radius: 5px;
+            text-align: center;
+            font-size: 0.9rem;
+            border: 1px solid #bbdefb;
+        }
+        /* 滚动条迁移至预览区 */
+        #previewContainer {
+            flex: 1; /* 占据剩余空间 */
+            overflow: auto; /* 内部滚动 */
+            scrollbar-width: thin; /* Firefox优化 */
+            max-height: 60vh; /* 限制最大高度 */
+        }
 
-    <body>
-        <main class="container">
-            <h1>Welcome to PakePlus</h1>
+        /* 隐藏默认滚动条（视觉优化） */
+        #previewContainer::-webkit-scrollbar {
+            width: 8px;
+            background: transparent;
+        }
+        #previewContainer::-webkit-scrollbar-thumb {
+            background: #3498db;
+            border-radius: 4px;
+        }
+        
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .result-table th {
+            background: var(--primary);
+            color: white;
+            padding: 10px 15px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+        }
+        
+        .result-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .result-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .result-table tr:hover {
+            background-color: #f1f8ff;
+        }
+        
+        .note {
+            background: #fff8e1;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 0 8px 8px 0;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+        
+        .note h4 {
+            color: #e65100;
+            margin-bottom: 8px;
+        }
+        
 
-            <form class="row" id="greet-form">
-                <input id="greet-input" placeholder="Enter a name..." />
-                <button type="submit">Greet</button>
-            </form>
-            <p id="greet-msg"></p>
-        </main>
-    </body>
+        /* 固定在右下角的水印容器 */
+        .watermark-container {
+        position: flex;
+        padding: 2px;
+        
+        z-index: 100; /* 确保浮于内容之上 */
+        pointer-events: none; /* 禁用交互，穿透点击事件 */
+        }
+
+        /* 水印文字样式 */
+        .watermark {
+        font-size: 16px;
+        color: rgba(0, 0, 0, 0.5); /* 半透明灰色 */
+        font-family: "Microsoft YaHei", sans-serif;
+        text-align: center;
+        white-space: nowrap; /* 防止换行 */
+        user-select: none; /* 禁止文字被选中 */
+        }
+
+        
+        @media (max-width: 900px) {
+            .main-content {
+                flex-direction: column;
+            }
+            
+            .control-panel, .results-panel {
+                width: 100%;
+            }
+            
+            .control-panel {
+                border-right: none;
+                border-bottom: 1px solid #eaeaea;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>工艺表时间统计工具</h1>
+            <p>自动提取Word工艺表中各工种的工作时间并生成Excel统计报表</p>
+        </header>
+        
+        <div class="main-content">
+            <div class="control-panel">
+                <div class="card">
+                    <h3>文件处理</h3>
+                    <button class="btn" id="convertBtn">
+                        <i>📄</i> 选择Word文件
+                    </button>
+                    <input type="file" id="fileInput" class="file-input" accept=".docx">
+                    
+                    <div class="status-indicator" id="status">等待文件选择...</div>
+                    
+                    <div class="progress-container">
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress" id="progress"></div>
+                        </div>
+                        <div class="progress-text" id="progressText">0%</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>统计工种</h3>
+                    <p>系统将自动识别以下工种并统计时间：</p>
+                    <div class="work-types">
+                        <div class="work-type">车</div>
+                        <div class="work-type">58铣</div>
+                        <div class="work-type">钳</div>
+                        <div class="work-type">外磨</div>
+                        <div class="work-type">平磨</div>
+                        <div class="work-type">刀模</div>
+                        <div class="work-type">镗</div>
+                        <div class="work-type">线切割</div>
+                        <div class="work-type">慢走丝</div>
+                        <div class="work-type">螺纹磨</div>
+                        <div class="work-type">数控</div>
+                        <div class="work-type">内模</div>
+                        <div class="work-type">研磨</div>
+                        <div class="work-type">焊接</div>
+                        <div class="work-type">光学磨</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>使用说明</h3>
+                    <ol style="padding-left: 20px; margin-bottom: 15px;">
+                        <li>点击按钮选择Word文档</li>
+                        <li>系统自动解析文档中的所有工艺表</li>
+                        <li>提取每个工艺表第6-20行第二列的工种</li>
+                        <li>统计对应工种第四列和第五列的时间总和</li>
+                        <li>生成Excel文件并自动下载</li>
+                    </ol>
+                    
+                    <div class="note">
+                        <h4>注意事项</h4>
+                        <p>• Word文档必须为.docx格式</p>
+                        <p>• 确保工艺表格式符合规范要求</p>
+                        <p>• 时间格式应为类似2H30′的标准格式</p>
+                    </div>
+                </div>
+
+                          <!-- 水印容器 -->
+                <div class="watermark-container">
+                <div class="watermark">作者：孙若文 | © 2025</div>
+                </div>
+            </div>
+            
+            <div class="results-panel">
+                <div class="card">
+                    <h3>处理结果</h3>
+                    <div id="resultContainer">
+                        <p>结果将在此处显示...</p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>统计预览</h3>
+                    <div id="previewContainer">
+                        <p>转换完成后将显示统计预览</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const convertBtn = document.getElementById('convertBtn');
+            const fileInput = document.getElementById('fileInput');
+            const status = document.getElementById('status');
+            const progressBar = document.getElementById('progressBar');
+            const progress = document.getElementById('progress');
+            const progressText = document.getElementById('progressText');
+            const resultContainer = document.getElementById('resultContainer');
+            const previewContainer = document.getElementById('previewContainer');
+            
+            // 定义要统计的工种列表
+            const workTypes = ['车', '58铣', '钳', '外磨', '平磨', '刀模', '镗', '线切割', '慢走丝', '螺纹磨', '数控', '内模', '研磨', '焊接', '光学磨'];
+            
+            // 点击按钮触发文件选择
+            convertBtn.addEventListener('click', function() {
+                fileInput.click();
+            });
+            
+            // 文件选择处理
+            fileInput.addEventListener('change', handleFile);
+            
+            // 更新进度条
+            function updateProgress(percent) {
+                progress.style.width = percent + '%';
+                progressText.textContent = percent + '%';
+            }
+            
+            // 处理Word文件
+            async function handleFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                // 重置状态
+                status.textContent = '开始处理文件: ' + file.name;
+                status.style.color = '';
+                progressBar.style.display = 'block';
+                updateProgress(0);
+                resultContainer.innerHTML = '<p>正在处理中...</p>';
+                previewContainer.innerHTML = '<p>正在处理中...</p>';
+                
+                try {
+                    // 1. 读取文件为ArrayBuffer
+                    updateProgress(10);
+                    status.textContent = '正在读取文件...';
+                    const arrayBuffer = await readFileAsArrayBuffer(file);
+                    
+                    // 2. 使用mammoth将Word转换为HTML
+                    updateProgress(30);
+                    status.textContent = '解析Word文档...';
+                    const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                    const html = result.value;
+                    
+                    // 3. 提取时间数据
+                    updateProgress(50);
+                    status.textContent = '提取时间数据...';
+                    const processData = extractProcessData(html);
+                    
+                    // 4. 生成Excel并下载
+                    updateProgress(80);
+                    status.textContent = '生成Excel文件...';
+                    generateExcel(processData);
+                    
+                    // 5. 显示结果
+                    updateProgress(100);
+                    status.textContent = '处理完成！Excel文件已下载';
+                    status.style.color = '#27ae60';
+                    showResults(processData);
+                    
+                    // 显示预览表格
+                    showPreview(processData);
+                    
+                } catch (error) {
+                    console.error('处理过程中出错:', error);
+                    status.textContent = '处理失败: ' + error.message;
+                    status.style.color = '#e74c3c';
+                    progress.style.background = '#e74c3c';
+                    resultContainer.innerHTML = `<p class="error">错误: ${error.message}</p>`;
+                }
+            }
+            
+            // 读取文件为ArrayBuffer
+            function readFileAsArrayBuffer(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (event) => resolve(event.target.result);
+                    reader.onerror = (event) => reject(new Error("文件读取失败"));
+                    reader.readAsArrayBuffer(file);
+                });
+            }
+            
+            // 从HTML中提取工艺数据
+             function extractProcessData(html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const tables = doc.querySelectorAll('table');
+                const results = [];
+                let currentGroup = null; // 当前工艺表分组
+
+                // 遍历所有表格
+                tables.forEach((table, tableIndex) => {
+                    const rows = table.querySelectorAll('tr');
+                    
+                    // 检查表格行数是否足够
+                    if (rows.length < 5) {
+                        console.warn(`表格 ${tableIndex+1} 行数不足，跳过处理`);
+                        return;
+                    }
+                    
+                    // 获取子件信息（第二行第三列）
+                    const subPartRow = rows[1];
+                    const subPartCells = subPartRow.querySelectorAll('td, th');
+                    let subPart = '未知';
+                    
+                    if (subPartCells.length >= 3) {
+                        subPart = subPartCells[2].textContent.trim();
+                    }
+
+                    // --- 核心修改：合并相同子件的表格 ---
+                    if (currentGroup && currentGroup.subPart === subPart) {
+                        // 属于同一工艺表，合并数据
+                        console.log(`表格 ${tableIndex+1} 合并到工艺表: ${subPart}`);
+                    } else {
+                        // 新工艺表分组
+                        currentGroup = {
+                            tableIndexes: [tableIndex + 1],
+                            subPart: subPart,
+                            workTypeTimes: {},
+                            tableCount: 0
+                        };
+                        workTypes.forEach(type => {
+                            currentGroup.workTypeTimes[type] = 0;
+                        });
+                        results.push(currentGroup);
+                    }
+                    currentGroup.tableCount++; // 计数+1
+                    
+                    // 处理当前表格的第6行到第20行
+                    for (let i = 5; i <= Math.min(19, rows.length - 1); i++) {
+                        const cells = rows[i].querySelectorAll('td, th');
+                        if (cells.length < 5) continue;
+                        
+                        const workType = cells[1].textContent.trim();
+                        if (workTypes.includes(workType)) {
+                            const timeStr1 = cells[3].textContent.trim();
+                            const timeStr2 = cells[4].textContent.trim();
+                            const minutes1 = parseTimeToMinutes(timeStr1);
+                            const minutes2 = parseTimeToMinutes(timeStr2);
+                            
+                            // 累加到当前分组
+                            currentGroup.workTypeTimes[workType] += minutes1 + minutes2;
+                        }
+                    }
+                });
+                
+                return results;
+            }
+            
+            // 将时间字符串解析为分钟数
+            function parseTimeToMinutes(timeStr) {
+                // 示例时间格式: 2H30′、1H、45′
+                let hours = 0;
+                let minutes = 0;
+                
+                // 匹配小时部分
+                const hourMatch = timeStr.match(/(\d+)H/);
+                if (hourMatch) {
+                    hours = parseInt(hourMatch[1], 10);
+                }
+                
+                // 匹配分钟部分
+                const minuteMatch = timeStr.match(/(\d+)′/);
+                if (minuteMatch) {
+                    minutes = parseInt(minuteMatch[1], 10);
+                }
+                
+                return hours * 60 + minutes;
+            }
+            
+            // 分钟数转换为时间格式
+            function formatMinutesToTime(totalMinutes) {
+                const hours = Math.floor(totalMinutes / 60);
+                const minutes = totalMinutes % 60;
+                return `${hours}H${minutes}′`;
+            }
+            
+            // 生成Excel并下载
+            function generateExcel(processData) {
+                // 创建工作簿
+                const wb = XLSX.utils.book_new();
+                
+                // 创建工作表数据
+                const wsData = [];
+                
+                // 添加标题行
+                const headerRow = ['子件', ...workTypes];
+                wsData.push(headerRow);
+                
+                // 添加数据行
+                processData.forEach(data => {
+                    const row = [data.subPart];
+                    
+                    workTypes.forEach(type => {
+                        const totalMinutes = data.workTypeTimes[type];
+                        // 将分钟数转换为时间格式
+                        const formattedTime = formatMinutesToTime(totalMinutes);
+                        row.push(formattedTime);
+                    });
+                    
+                    wsData.push(row);
+                });
+                
+                // 创建工作表
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+                
+                // 设置列宽
+                const colWidths = [{ wch: 25 }]; // 子件列宽
+                workTypes.forEach(() => colWidths.push({ wch: 10 })); // 各工种列宽
+                ws['!cols'] = colWidths;
+                
+                // 添加工作表到工作簿
+                XLSX.utils.book_append_sheet(wb, ws, '工艺时间统计');
+                
+                // 生成Excel文件并下载
+                XLSX.writeFile(wb, '工艺表时间统计.xlsx');
+            }
+            
+            // 显示处理结果
+            function showResults(processData) {
+                let resultHTML = `<p>成功处理 ${processData.length} 个工艺表：</p>`;
+                
+                processData.forEach(data => {
+                    resultHTML += `
+                        <div class="result-item">
+                            <h4>子件号: ${data.subPart}</h4>
+                            <p>包含表格: ${data.tableCount}个</p>
+                        </div>
+                    `;
+                });
+                
+                resultContainer.innerHTML = resultHTML;
+            }
+            
+            // 显示预览表格
+            function showPreview(processData) {
+                
+                if (processData.length === 0) {
+                    previewContainer.innerHTML = '<p>未找到有效的工艺表数据</p>';
+                    return;
+                }
+                const container = document.getElementById('previewContainer');
+                let tableHTML = `
+                    <table class="result-table">
+                        <thead>
+                            <tr>
+                                <th>子件</th>
+                `;
+                
+                // 添加工种表头
+                workTypes.forEach(type => {
+                    tableHTML += `<th>${type}</th>`;
+                });
+                
+                tableHTML += `</tr></thead><tbody>`;
+                
+                // 添加数据行
+                processData.forEach(data => {
+                    tableHTML += `<tr><td>${data.subPart}</td>`;
+                    
+                    workTypes.forEach(type => {
+                        const totalMinutes = data.workTypeTimes[type];
+                        const formattedTime = formatMinutesToTime(totalMinutes);
+                        tableHTML += `<td>${formattedTime}</td>`;
+                    });
+                    
+                    tableHTML += `</tr>`;
+                });
+                
+                tableHTML += `</tbody></table>`;
+                
+                previewContainer.innerHTML = tableHTML;
+            }
+        });
+    </script>
+</body>
 </html>
